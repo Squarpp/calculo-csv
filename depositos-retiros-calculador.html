@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cierre de Caja - Buena Fortuna</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --card-bg: #1e1e1e;
+            --text: #e0e0e0;
+            --primary: #3498db;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --warning: #f1c40f;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { width: 100%; max-width: 800px; }
+        h1 { color: var(--primary); text-align: center; margin-bottom: 30px; font-size: 2.2rem; }
+        
+        /* Área de Carga */
+        #drop-area {
+            border: 2px dashed var(--primary);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: var(--card-bg);
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: 0.3s;
+        }
+        #drop-area.hover { background: #252525; border-color: var(--success); }
+        #file-list { font-size: 0.9rem; color: #bbb; margin-bottom: 15px; text-align: center; }
+
+        .btn-main {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+        }
+        .btn-main:hover { background: #27ae60; }
+
+        /* Resumen Total */
+        .grand-totals {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 40px;
+        }
+        .total-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border-bottom: 5px solid #555;
+        }
+        .total-card.depo { border-color: var(--success); }
+        .total-card.reti { border-color: var(--danger); }
+        .total-card.sald { border-color: var(--warning); }
+        .total-card h2 { font-size: 0.8rem; margin: 0; color: #aaa; text-transform: uppercase; }
+        .total-card p { font-size: 1.5rem; font-weight: bold; margin: 10px 0; }
+        .btn-copy { background: #333; color: #fff; border: 1px solid #444; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.7rem; }
+        .btn-copy:hover { background: #444; }
+
+        /* Desglose Individual */
+        .individual-results { width: 100%; }
+        .file-row {
+            background: var(--card-bg);
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            border-left: 4px solid var(--primary);
+        }
+        .file-row h3 { margin: 0 0 10px 0; font-size: 1rem; color: var(--primary); }
+        .file-grid { display: flex; justify-content: space-between; font-size: 0.9rem; }
+        .file-grid span b { color: #fff; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Cierre de Caja Buena Fortuna</h1>
+
+        <div id="drop-area" onclick="document.getElementById('fileElem').click()">
+            <b>Arrastrá todos los CSV aquí</b><br>
+            <span style="font-size: 0.9rem; color: #888;">Podés soltar varios archivos a la vez</span>
+            <input type="file" id="fileElem" multiple accept=".csv" style="display:none" onchange="addFiles(this.files)">
+        </div>
+
+        <div id="file-list">No hay archivos seleccionados</div>
+        
+        <button class="btn-main" onclick="analizarTodo()">ANALIZAR ARCHIVOS</button>
+
+        <div class="grand-totals">
+            <div class="total-card depo">
+                <h2>Depósitos Totales</h2>
+                <p id="grand-depo">0,00</p>
+                <button class="btn-copy" onclick="copiar('grand-depo')">Copiar</button>
+            </div>
+            <div class="total-card reti">
+                <h2>Retiros Totales</h2>
+                <p id="grand-reti">0,00</p>
+                <button class="btn-copy" onclick="copiar('grand-reti')">Copiar</button>
+            </div>
+            <div class="total-card sald">
+                <h2>Saldo General</h2>
+                <p id="grand-saldo">0,00</p>
+                <button class="btn-copy" onclick="copiar('grand-saldo')">Copiar</button>
+            </div>
+        </div>
+
+        <div id="individual-results" class="individual-results">
+            </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+
+        function addFiles(files) {
+            for(let f of files) selectedFiles.push(f);
+            document.getElementById('file-list').innerText = `${selectedFiles.length} archivo(s) listos para analizar.`;
+        }
+
+        // Manejo de arrastrar
+        const da = document.getElementById('drop-area');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
+            da.addEventListener(e, (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+        });
+        da.addEventListener('dragenter', () => da.classList.add('hover'));
+        da.addEventListener('dragleave', () => da.classList.remove('hover'));
+        da.addEventListener('drop', (e) => {
+            da.classList.remove('hover');
+            addFiles(e.dataTransfer.files);
+        });
+
+        async function analizarTodo() {
+            if (selectedFiles.length === 0) return alert("Primero arrastrá algunos archivos.");
+
+            let gDepo = 0, gReti = 0;
+            const container = document.getElementById('individual-results');
+            container.innerHTML = "<h2>Desglose por Archivo</h2>";
+
+            for (let file of selectedFiles) {
+                const text = await file.text();
+                const res = procesarUnCSV(text);
+                
+                gDepo += res.depo;
+                gReti += res.reti;
+
+                // Crear fila individual
+                const div = document.createElement('div');
+                div.className = 'file-row';
+                div.innerHTML = `
+                    <h3>📄 ${file.name}</h3>
+                    <div class="file-grid">
+                        <span>Depósitos: <b style="color:#2ecc71">${fmt(res.depo)}</b></span>
+                        <span>Retiros: <b style="color:#e74c3c">${fmt(res.reti)}</b></span>
+                        <span>Saldo: <b style="color:#f1c40f">${fmt(res.depo - res.reti)}</b></span>
+                    </div>
+                `;
+                container.appendChild(div);
+            }
+
+            // Actualizar Totales Arriba
+            document.getElementById('grand-depo').innerText = fmt(gDepo);
+            document.getElementById('grand-reti').innerText = fmt(gReti);
+            document.getElementById('grand-saldo').innerText = fmt(gDepo - gReti);
+            
+            // Limpiar lista para la próxima
+            selectedFiles = [];
+            document.getElementById('file-list').innerText = "Análisis completado.";
+        }
+
+        function procesarUnCSV(csvText) {
+            const lineas = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
+            if (lineas.length < 2) return { depo: 0, reti: 0 };
+
+            const sep = lineas[0].includes(';') ? ';' : ',';
+            const headers = lineas[0].split(sep).map(h => h.replace(/"/g, '').trim().toLowerCase());
+            
+            let idx = headers.indexOf('cantidad');
+            if (idx === -1) {
+                // Lógica de detección automática si no hay header
+                idx = 2; 
+                const prueba = lineas[1].split(sep)[1];
+                if (prueba && (prueba.includes('-') || /^-?\d+/.test(prueba.trim()))) idx = 1;
+            }
+
+            let d = 0, r = 0;
+            for (let i = 1; i < lineas.length; i++) {
+                const cols = lineas[i].split(sep);
+                let valStr = cols[idx] ? cols[idx].replace(/"/g, '').trim() : "";
+                let n = parseFloat(valStr.replace(',', '.'));
+                if (!isNaN(n)) {
+                    if (n > 0) d += n;
+                    else r += Math.abs(n);
+                }
+            }
+            return { depo: d, reti: r };
+        }
+
+        function fmt(n) {
+            return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function copiar(id) {
+            const val = document.getElementById(id).innerText.replace(/\./g, '');
+            navigator.clipboard.writeText(val);
+            const btn = event.target;
+            const oldTxt = btn.innerText;
+            btn.innerText = "¡Copiado!";
+            setTimeout(() => btn.innerText = oldTxt, 1000);
+        }
+    </script>
+</body>
+</html>
